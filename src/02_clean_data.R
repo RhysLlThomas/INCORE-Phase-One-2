@@ -64,7 +64,7 @@ for (i in 1:nrow(partitions)){
   t_read <- Sys.time()
   df <- data %>%
     filter((year_id==!!year) & (age_start==!!age) & (sex_id==!!sex)) %>%
-    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, los) %>%
+    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, los, weight) %>%
     as_tibble()
   secs_read <- as.numeric(difftime(Sys.time(), t_read, units = "secs"))
 
@@ -94,7 +94,7 @@ for (i in 1:nrow(partitions)){
 
   t_write <- Sys.time()
   df %>%
-    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, family, is_primary, los) %>%
+    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, family, is_primary, los, weight) %>%
     group_by(year_id, age_start, sex_id) %>%
     write_dataset(file.path(outdir, "cleaned_data.parquet"),
                   basename_template=paste(c(year, age, sex, "{{i}}.parquet"), collapse='_'),

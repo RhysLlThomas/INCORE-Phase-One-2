@@ -149,8 +149,8 @@ for (reg in reg_names) {
     # frame server-side, avoiding an O(parts^2) h2o.rbind loop
     data <- h2o.importFile(path = all_files)
 
-    # Setting predictors as all columns except "los"
-    predictors <- setdiff(colnames(data), c("los"))
+    # Setting predictors as all columns except "los" and "weight"
+    predictors <- setdiff(colnames(data), c("los", "weight"))
 
     # Column groups. Comorbidities are the secondary_ / secondary_fam_ dummies and
     # (family model) their age interactions; everything else is forced in.
@@ -212,6 +212,7 @@ for (reg in reg_names) {
     fit_OLS <- h2o.glm(
       x = c(forced_cols, comorbid_cols),
       y = "los",
+      weights_column = "weight",
       training_frame = data,
       family = "gaussian",
       lambda = 0,
@@ -240,6 +241,7 @@ for (reg in reg_names) {
     fit_LASSO_sel <- h2o.glm(
       x = c(forced_cols, comorbid_cols),
       y = "los",
+      weights_column = "weight",
       training_frame = data,
       family = "gaussian",
       alpha = 1,
@@ -290,6 +292,7 @@ for (reg in reg_names) {
     fit_LASSO <- h2o.glm(
       x = selected,
       y = "los",
+      weights_column = "weight",
       training_frame = data,
       family = "gaussian",
       lambda = 0,
