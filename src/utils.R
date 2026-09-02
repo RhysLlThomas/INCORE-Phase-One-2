@@ -435,7 +435,7 @@ create_reg_matrices <- function(DT, years, ages, conditions, families, level = c
     DT_base <- DT[,
                   .SD[1],
                   by = admission_id,
-                  .SDcols = c("age_start", "year_id", "los")]
+                  .SDcols = c("age_start", "year_id", "los", "weight")]
     row_id <- "admission_id"
     n_admissions_vec <- NULL
     
@@ -544,22 +544,22 @@ create_reg_matrices <- function(DT, years, ages, conditions, families, level = c
     age_eq = if (!is.null(n_admissions_vec)) {
       cbind(los = DT_base$los, n_admissions = n_admissions_vec, age_mat, year_mat)
     } else {
-      cbind(los = DT_base$los, age_mat, year_mat)
+      cbind(los = DT_base$los, weight = DT_base$weight, age_mat, year_mat)
     },
     condition_eq = if (!is.null(n_admissions_vec)) {
       cbind(los = DT_base$los, n_admissions = n_admissions_vec, condition_mat, year_mat)
     } else {
-      cbind(los = DT_base$los, condition_mat, year_mat)
+      cbind(los = DT_base$los, weight = DT_base$weight, condition_mat, year_mat)
     },
     family_age_eq = if (!is.null(n_admissions_vec)) {
       cbind(los = DT_base$los, n_admissions = n_admissions_vec, family_mat, age_mat, family_age_mat, year_mat)
     } else {
-      cbind(los = DT_base$los, family_mat, age_mat, family_age_mat, year_mat)
+      cbind(los = DT_base$los, weight = DT_base$weight, family_mat, age_mat, family_age_mat, year_mat)
     },
     family_pair_eq = if (!is.null(n_admissions_vec)) {
       cbind(los = DT_base$los, n_admissions = n_admissions_vec, family_mat, family_pair_mat, year_mat)
     } else {
-      cbind(los = DT_base$los, family_mat, family_pair_mat, year_mat)
+      cbind(los = DT_base$los, weight = DT_base$weight, family_mat, family_pair_mat, year_mat)
     }
   )
   

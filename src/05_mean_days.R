@@ -74,7 +74,7 @@ for (reg in reg_names) {
 
     # Separate LOS and predictors
     los_vec  <- df$los
-    preds_df <- df %>% select(-los)
+    preds_df <- df %>% select(-los, -weight)
 
     # For person_year level, drop n_admissions (not a predictor)
     if (reg_level == "person_year" && "n_admissions" %in% names(preds_df)) {

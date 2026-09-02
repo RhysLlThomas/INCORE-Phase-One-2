@@ -127,13 +127,14 @@ for (reg in reg_names) {
     }
 
     # Setting predictors as all columns except "los"
-    predictors <- setdiff(colnames(data), c("los"))
+    predictors <- setdiff(colnames(data), c("los", "weight"))
 
     # Running LASSO regression, using lambda search
     print("Running regression...")
     fit_LASSO <- h2o.glm(
       x = predictors,
       y = "los",
+      weights_column = "weight",
       training_frame = data,
       family = "gaussian",
       alpha = 1,
@@ -205,6 +206,7 @@ for (reg in reg_names) {
     fit_GLM <- h2o.glm(
       x = selected_predictors,
       y = "los",
+      weights_column = "weight",
       training_frame = data,
       family = "gaussian",
       lambda = 0,

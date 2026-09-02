@@ -27,11 +27,11 @@ if (basename(filepath) == "ADD HERE") {
 # Existing beneficiary ID column should be unique to individuals by year.
 # Individuals can appear multiple times in the data, but beneficiary ID should
 # be the same for a single individual
-beneficiary_id_col <- "person_id"
+beneficiary_id_col <- NULL
 
 # Existing admission ID column is not necessary, but can be used to assign admission IDs
 # Data should be unique on admission ID, that is, one row per admission
-admission_id_cols <- "admi_id"
+admission_id_cols <- NULL
 
 # Year can be provided as a standalone column or can be extracted from a
 # discharge date column
@@ -72,6 +72,10 @@ icd_ver_col_map <- list('10'='icd10')
 # both a discharge date column and an admission date column.
 los_col <- "los"
 
+# Survey/sampling weight. Admission-level. Leave NULL for an
+# unweighted analysis, in which case every record is assigned a weight of 1.
+weight_col <- NULL
+
 # ICD codes corresponding to an admission should be provided as multiple columns.
 # You can specify each column, or use regular expressions (regex) to find all
 # columns using a matching pattern. If you provide each column explicitly,
@@ -97,7 +101,7 @@ df <- read_data(filepath)
 # Subsetting data to specified columns only
 df <- subset_cols(df, select_cols=c(beneficiary_id_col, admission_id_cols, year_col, age_col, sex_col,
                                     discharge_date_col, admission_date_col,
-                                    birth_date_col,icd_ver_col, los_col, icd_cols))
+                                    birth_date_col,icd_ver_col, los_col, weight_col, icd_cols))
 #---------------------
 ##### Processing #####
 #---------------------
@@ -131,6 +135,14 @@ df <- get_icd_version(df, icd_ver_col=icd_ver_col, icd_ver_col_map=icd_ver_col_m
 
 # Create column for los
 df <- get_length_of_stay(df, los_col=los_col, discharge_date_col=discharge_date_col, admission_date_col=admission_date_col)
+
+# Create column for weight (defaults to 1 if no weight column provided)
+if (!is.null(weight_col)) {
+  df <- df %>% mutate(weight = as.numeric(.data[[weight_col]]))
+} else {
+  df <- df %>% mutate(weight = 1)
+}
+
 
 # Map ICD codes to conditions, chunked by year. get_conditions() pivots the
 # diagnosis columns to long format; on a large dataset a single pivot can exceed
@@ -195,7 +207,7 @@ for (i in seq_along(out_files)) {
   # nothing.
   readRDS(out_files[i]) %>%
     filter(age >= 18) %>%
-    select(bene_id, admission_id, year_id, sex_id, age_start, icd_ver, icd_level, icd_code, condition, los) %>%
+    select(bene_id, admission_id, year_id, sex_id, age_start, icd_ver, icd_level, icd_code, condition, los, weight) %>%
     group_by(year_id, age_start, sex_id) %>%
     write_dataset(file.path(outdir,'transformed_data.parquet'),
                   basename_template=paste0(file_path_sans_ext(basename(filepath)),'_{{i}}.parquet'),
