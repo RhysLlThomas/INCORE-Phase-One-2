@@ -27,11 +27,11 @@ if (basename(filepath) == "ADD HERE") {
 # Existing beneficiary ID column should be unique to individuals by year.
 # Individuals can appear multiple times in the data, but beneficiary ID should
 # be the same for a single individual
-beneficiary_id_col <- NULL
+beneficiary_id_col <- "person_id"
 
 # Existing admission ID column is not necessary, but can be used to assign admission IDs
 # Data should be unique on admission ID, that is, one row per admission
-admission_id_cols <- NULL
+admission_id_cols <- "admi_id"
 
 # Year can be provided as a standalone column or can be extracted from a
 # discharge date column
