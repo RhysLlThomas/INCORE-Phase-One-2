@@ -136,6 +136,15 @@ df <- get_icd_version(df, icd_ver_col=icd_ver_col, icd_ver_col_map=icd_ver_col_m
 # Create column for los
 df <- get_length_of_stay(df, los_col=los_col, discharge_date_col=discharge_date_col, admission_date_col=admission_date_col)
 
+# INCORE inclusion: drop admissions with missing length of stay. LOS is the model
+# outcome; an NA los otherwise propagates to every stage and makes LASSO select
+# nothing (observed Jan 2026). Filtered here, at sample definition, alongside the
+# 18+ rule, so ALL downstream stages share one clean sample.
+n_before <- nrow(df)
+df <- df %>% filter(!is.na(los))
+message("LOS filter: removed ", format(n_before - nrow(df), big.mark = ","),
+        " of ", format(n_before, big.mark = ","), " admissions with missing LOS")
+
 # Create column for weight (defaults to 1 if no weight column provided)
 if (!is.null(weight_col)) {
   df <- df %>% mutate(weight = as.numeric(.data[[weight_col]]))
