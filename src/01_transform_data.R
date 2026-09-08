@@ -18,7 +18,7 @@ source(file.path("src","utils.R"))
 # Path to your raw data file, expected inside the data/ folder. One row per
 # admission. Supported formats: .csv, .parquet, .dta, .sav, .sas7bdat, .xls,
 # .xlsx, .rds (see read_data in utils.R).
-filepath <- file.path("data", "ADD HERE")
+filepath <- "/mnt/share/limited_use/LIMITED_USE/PROJECT_FOLDERS/USA/HCUP_NIS/dex/00_data_prep/stage_1/best/"
 
 if (basename(filepath) == "ADD HERE") {
   stop("Edit the USER INPUTS section of src/01_transform_data.R for your data first.")
@@ -35,7 +35,7 @@ admission_id_cols <- NULL
 
 # Year can be provided as a standalone column or can be extracted from a
 # discharge date column
-year_col <- "year"
+year_col <- "year_id"
 discharge_date_col <- NULL
 
 # Age can be provided as a standalone column or can be extracted from both a
@@ -52,7 +52,7 @@ admission_date_col <- NULL
 
 # Or, if the data contains "1" for male and "2" for female...
 # sex_col_map <- list('1'='M', '2'='F')
-sex_col <- "sex"
+sex_col <- "female"
 sex_col_map <- list('0'='M', '1'='F')
 
 # ICD version can be provided as a standalone column or can be extracted from a
@@ -65,8 +65,10 @@ sex_col_map <- list('0'='M', '1'='F')
 
 # Or, if the data contains "v10" for ICD 10 and "v9" for ICD 9...
 # icd_ver_col_map <- list('v10'='icd10', 'v9'='icd9')
-icd_ver_col <- "icd_ver"
-icd_ver_col_map <- list('10'='icd10')
+# icd_ver_col <- "icd_ver"
+# icd_ver_col_map <- list('10'='icd10')
+# for 2015+
+
 
 # Length of stay can be provided as a standalone column or can be extracted from
 # both a discharge date column and an admission date column.
@@ -74,7 +76,7 @@ los_col <- "los"
 
 # Survey/sampling weight. Admission-level. Leave NULL for an
 # unweighted analysis, in which case every record is assigned a weight of 1.
-weight_col <- NULL
+weight_col <- 'discwt'
 
 # ICD codes corresponding to an admission should be provided as multiple columns.
 # You can specify each column, or use regular expressions (regex) to find all
@@ -82,7 +84,7 @@ weight_col <- NULL
 # ensure that they are in order (primary diagnosis first). Anchored, ordered
 # patterns like the example below guarantee the diagnosis priority order
 # regardless of how the columns are ordered in the raw data.
-icd_cols <- paste0("^icd_", 1:40, "$")
+icd_cols <- c("^dx_\\d+$")
 
 #----------------
 ##### Setup #####
@@ -92,11 +94,47 @@ icd_cols <- paste0("^icd_", 1:40, "$")
 icd_condition_map <- read_feather(file.path("maps", "icd_map.feather"))
 
 # Creating output folder, if it doesn't already exist
-outdir <- file.path("data", "01_transformed_data")
+#outdir <- file.path("data", "01_transformed_data")
+outdir <- file.path("/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/", "01_transformed_data")
 dir.create(outdir, recursive = TRUE)
+out_dir  <- "/mnt/share/dex/us_county/05_requests/INCORE/processed_by_year"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
+if (dir.exists(file.path(outdir, 'transformed_data.parquet'))) {
+  message("Removing previous transformed_data.parquet before writing")
+  unlink(file.path(outdir, 'transformed_data.parquet'), recursive = TRUE, force = TRUE)
+}
+
+# LOOP - NIS SPECIFIC
+#-----
+all_files <- list.dirs("/mnt/share/limited_use/LIMITED_USE/PROJECT_FOLDERS/USA/HCUP_NIS/dex/00_data_prep/stage_1/best/",recursive = FALSE, full.names = T)
+all_files <- all_files[grepl("201[4-9]", all_files)]
+
+
+for(filepath in all_files){
+
+  message("==== ", basename(filepath), " ====")
+  
+  year <- as.integer(sub(".*(20[0-9]{2}).*", "\\1", filepath))
+  if(year %in% c(2014,2015)){
+    # for 2014
+    icd_ver_col <- "icd_vers" #"DXVER"
+    icd_ver_col_map <- list('ICD10_detail'='icd10', 'ICD9_detail'='icd9')
+    
+  }else if(year %in% c(2016,2017)){
+    icd_ver_col <- "dxver" #"DXVER"
+    icd_ver_col_map <- list('10'='icd10', '9'='icd9')
+    
+  }else if(year %in% c(2018,2019)){
+    icd_ver_col <- "icd_vers" #"DXVER"
+    icd_ver_col_map <- list('ICD10'='icd10', 'ICD9'='icd9')
+    
+  }
+  
+  
 # Read in raw data, using custom function to handle various file types
-df <- read_data(filepath)
+#df <- read_data(filepath)
+df <- open_dataset(filepath) %>% collect()
 
 # Subsetting data to specified columns only
 df <- subset_cols(df, select_cols=c(beneficiary_id_col, admission_id_cols, year_col, age_col, sex_col,
@@ -150,9 +188,6 @@ if (!is.null(weight_col)) {
 # keeps each pivot small, and each year's result is written to disk so a run can
 # be restarted from where it stopped.
 
-out_dir  <- "processed_by_year"
-dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
-
 years <- sort(unique(df$year_id))
 
 out_files <- character(length(years))
@@ -193,10 +228,7 @@ for (i in seq_along(years)) {
 # files would survive underneath the new ones and silently feed stale data to
 # later stages.
 
-if (dir.exists(file.path(outdir, 'transformed_data.parquet'))) {
-  message("Removing previous transformed_data.parquet before writing")
-  unlink(file.path(outdir, 'transformed_data.parquet'), recursive = TRUE, force = TRUE)
-}
+
 
 for (i in seq_along(out_files)) {
   message("Writing ", years[i], " (", i, "/", length(out_files), ")")
@@ -214,6 +246,10 @@ for (i in seq_along(out_files)) {
                   max_rows_per_file = 2.5e6L)
   gc()
 }
+
+
+}
+
 
 # Confirming the write completed -- METADATA ONLY. The transformed data is long
 # (one row per diagnosis code) and can be very large, so this reports the row
