@@ -79,10 +79,12 @@ if (is.na(reference_family)) {
 h2o_seed <- 1234
 
 # Setting input and output folders
-indir  <- file.path("data", "03_prepped_inputs")
+#indir  <- file.path("data", "03_prepped_inputs")
+indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs/"
 
 # Creating output folder, if it doesn't already exist
-outdir <- file.path("results_split")
+#outdir <- file.path("results_split")
+outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/results_split/"
 dir.create(outdir, recursive = TRUE)
 
 # The model-stats file is appended to per fit; start it fresh so rows from an

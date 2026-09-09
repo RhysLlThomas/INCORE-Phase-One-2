@@ -42,8 +42,10 @@ reg_level <- "admission"
 reg_names <- c("condition_split_eq", "family_age_split_eq")
 
 # Setting input and output folders
-indir <- file.path("data", "02_cleaned_data", "cleaned_data.parquet")
-outdir <- file.path("data", "03_prepped_inputs")
+#indir <- file.path("data", "02_cleaned_data", "cleaned_data.parquet")
+indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/02_cleaned_data//cleaned_data.parquet/"
+#outdir <- file.path("data", "03_prepped_inputs")
+outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs"
 
 # Loading dataset without reading fully into memory
 data <- open_dataset(indir)

@@ -49,9 +49,11 @@ reg_names <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq")
 
 # Setting input folder
 indir <- file.path("data", "03_prepped_inputs")
+indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs/"
 
 # Creating output folder, if it doesn't already exist
 outdir <- file.path("results")
+outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/results/"
 dir.create(outdir, recursive = TRUE)
 
 # Sex codes as they appear in the design-matrix filenames. 03_prep_inputs.R names
@@ -126,6 +128,9 @@ for (reg in reg_names) {
       }
     }
 
+    # drop rows with NAs in LOS. VERY IMPORTANT
+    data <- data[!is.na(data$los), ]
+    
     # Setting predictors as all columns except "los"
     predictors <- setdiff(colnames(data), c("los", "weight"))
 
