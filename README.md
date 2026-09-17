@@ -81,7 +81,11 @@ Data used in this project varies between teams. Generally, we expect to use admi
 
 Missing any of these variables in the data is okay, but some modification to the code may be required. For example, if the year of data is identified in the name of a file but does not appear as a column in the data, it should be added as a column before the `01_transform_data.R` step.
 
-**Sample restriction:** the INCORE estimation sample is adults aged 18 and over at admission. `01_transform_data.R` applies this restriction (`age >= 18`) automatically, so you do not need to pre-filter your extract -- though it is fine if it is already adults-only. The restriction must happen at this stage because all later stages see only 5-year age bands, and the 15-19 band cannot be split at 18. The regression and mean-days scripts (04, 05 and 07) refuse to run on design matrices that were built without the restriction (they check for age bands below 15).
+**Length-of-stay definition:** bed-days are counted as calendar days spanned -- a same-day separation counts as 1 bed-day, a stay spanning two consecutive calendar days counts as 2, and so on; equivalently, (separation date − admission date) + 1. If you give `01_transform_data.R` your admission and discharge date columns, it computes this for you. If you supply a ready-made length-of-stay column instead, it must already follow this convention -- if your source variable counts *nights* (same-day = 0), supply the date columns rather than the variable.
+
+**Sample restriction:** the INCORE estimation sample is adults aged 18 and over at admission. `01_transform_data.R` applies this restriction (`age >= 18`) automatically, so you do not need to pre-filter your extract -- though it is fine if it is already adults-only. The restriction must happen at this stage because all later stages see only 5-year age bands, and the 15-19 band cannot be split at 18. The regression and mean-days scripts (04, 05 and 07) refuse to run on design matrices that were built without the restriction (they check for age bands below 15). Admissions with a missing length of stay are also dropped at this stage.
+
+**Survey weights:** countries whose data are a weighted sample (survey-design or discharge weights) set `weight_col` in `01_transform_data.R`. The weight is validated (it must be positive), carried into every design matrix, applied as an observation weight in all regressions, and used for the weighted mean LOS in step 05. Everyone else leaves `weight_col = NULL`, which assigns every admission a weight of 1 and reproduces the unweighted analysis exactly. The estimation scripts also accept design matrices built before weights existed: they fall back to an unweighted fit and print a message saying so.
 
 ### 01_transformed_data
 
@@ -197,15 +201,16 @@ This script runs the four original equations on the design matrices and outputs 
 
 For each equation and sex, two regressions are run: a LASSO regression (lambda search) used for variable selection, and a standard GLM refit on the selected predictors used for the reported coefficients and standard errors. Outputs per equation x sex: `*_coefs_LASSO.csv`, `*_coefs_GLM.csv`, `*_cell_counts.csv`, plus fit statistics (MSE, RMSE, R^2, AIC) appended to `LASSO_model_stats.csv` and `GLM_model_stats.csv`.
 
-Three behaviours to be aware of:
+Four behaviours to be aware of:
 
 - **Resume:** an equation x sex whose `_coefs_GLM.csv` already exists is skipped, so a failure part-way through a multi-hour run does not cost the completed fits. Delete the `results/` CSVs (or use `run_all.R` with `clean_start = TRUE`) to force a full re-run
 - **Collinear columns:** the GLM refit drops exactly-collinear columns (e.g. the reference age band and year). A predictor absent from the coefficient file should be read as zero downstream
 - **Adults-only check:** the script stops if the design matrices contain files for age bands below 15, which means they were built without the 18+ sample restriction (see the Data section). The fix is to re-run from `01_transform_data.R`, which is cheap because the year-mapping cache is reused. Steps 05 and 07 run the same check
+- **Weights:** if the design matrices carry a `weight` column (see Survey weights in the Data section), the LASSO and GLM are fitted with observation weights; otherwise the fit is unweighted and a message says so. Step 07 behaves the same way
 
 ### 05_mean_days.R
 
-Computes the OBSERVED (unadjusted) mean length of stay for every cell of every design matrix -- for each 0/1 dummy, the mean `los` where the dummy is 1 -- plus an overall mean by sex. No regressions and no h2o. Outputs `*_mean_los.csv` per equation x sex and `admission_mean_los_by_gender.csv` to `results/`. These observed means are used for descriptive comparison against the model-based results.
+Computes the OBSERVED (unadjusted) mean length of stay for every cell of every design matrix -- for each 0/1 dummy, the mean `los` where the dummy is 1 -- plus an overall mean by sex. No regressions and no h2o. When the matrices carry a `weight` column the means are weighted (cell counts remain sample row counts); otherwise they are plain means, with a message either way. Outputs `*_mean_los.csv` per equation x sex and `admission_mean_los_by_gender.csv` to `results/`. These observed means are used for descriptive comparison against the model-based results.
 
 ### 06_prep_inputs_split.R
 
@@ -260,4 +265,6 @@ For teams that ran an earlier version of the pipeline (steps 01-04 only), this v
 - **Primary/comorbidity split models** -- `06_prep_inputs_split.R` (+ `utils_split.R`) and `07_run_split_regressions_h2o.R`, estimating each condition's contribution as principal diagnosis separately from its contribution as a comorbidity, with a common reference condition (`lri`) across countries
 - **Faster step 02** -- the cleaning step was reimplemented with vectorised joins (`utils_clean.R`); same rules and outputs, much faster on large data, and now seeded for reproducibility
 - **Resume and caching** -- step 01 caches its per-year condition mapping in `processed_by_year/`, and step 04 skips already-completed fits, so interrupted multi-hour runs resume instead of restarting
+- **Optional survey weights** -- countries with weighted samples set `weight_col` in step 01; the weight flows into the design matrices, all regressions, and the observed means. Unweighted countries are unaffected: `weight = 1` reproduces the previous results exactly, and the estimation scripts fall back to unweighted fits on matrices built before weights existed
+- **Missing-LOS exclusion** -- admissions with a missing length of stay are dropped in step 01, alongside the 18+ rule, so every downstream stage shares one clean sample
 - **`check_01_output.R`** -- a fast sanity check of step 01's output
