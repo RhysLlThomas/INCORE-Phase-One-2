@@ -265,7 +265,9 @@ get_length_of_stay <- function(df, los_col=NULL, discharge_date_col=NULL, admiss
     # Converting los_col to a symbol
     los_col = rlang::sym(los_col)
     
-    # Creating copy of length of stay column
+    # Creating copy of length of stay column. A supplied column must already
+    # follow the INCORE bed-day convention: same-day separation = 1, a stay
+    # spanning two consecutive calendar days = 2 (days spanned, not nights)
     message("Using ",  los_col, " column to get length of stay...")
     df <- df %>%
       mutate(los = !!los_col)
@@ -277,12 +279,14 @@ get_length_of_stay <- function(df, los_col=NULL, discharge_date_col=NULL, admiss
     admission_date_col = rlang::sym(admission_date_col)
     
     
-    # Creating new length of stay column, in days, using date difference
-    # Setting any negative values to -1
+    # Creating new length of stay column as bed-days per the INCORE protocol:
+    # (discharge date - admission date) + 1, so a same-day separation = 1 and a
+    # stay spanning two consecutive calendar days = 2. A discharge date before
+    # the admission date is invalid and set to -1.
     message("Using ",  discharge_date_col, " and ", admission_date_col, " columns to get length of stay...")
     df <- df %>%
       mutate(los = as.integer(difftime(!!discharge_date_col, !!admission_date_col, units="days")),
-             los = ifelse(los < 0, -1, los))
+             los = ifelse(los < 0, -1, los + 1))
   }
   
   # Returning dataframe with new los column
@@ -427,6 +431,10 @@ create_reg_matrices <- function(DT, years, ages, conditions, families, level = c
   
   # Using provided regression level, defaults to admission
   level <- match.arg(level)
+
+  # Cleaned data written before the weights update has no weight column:
+  # treat it as unweighted (weight = 1)
+  if (!"weight" %in% names(DT)) DT[, weight := 1]
 
   # Creating a datatable that's unique for either admission or person-year
   # and contains age/year/los/number of admissions
