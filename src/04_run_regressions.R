@@ -127,13 +127,21 @@ for (reg in reg_names) {
     }
 
     # Setting predictors as all columns except "los"
-    predictors <- setdiff(colnames(data), c("los"))
+    predictors <- setdiff(colnames(data), c("los", "weight"))
+
+    # Weights are optional: design matrices built before the weights update
+    # (or at the person_year level) have no weight column, and the fit is
+    # then unweighted. A weighted country must rebuild from 01_transform_data.R.
+    use_weights <- "weight" %in% colnames(data)
+    print(if (use_weights) "Weight column found: fitting weighted regressions." else
+          "No weight column: fitting UNWEIGHTED regressions (rebuild from 01_transform_data.R if you set weight_col).")
 
     # Running LASSO regression, using lambda search
     print("Running regression...")
     fit_LASSO <- h2o.glm(
       x = predictors,
       y = "los",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       alpha = 1,
@@ -205,6 +213,7 @@ for (reg in reg_names) {
     fit_GLM <- h2o.glm(
       x = selected_predictors,
       y = "los",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       lambda = 0,

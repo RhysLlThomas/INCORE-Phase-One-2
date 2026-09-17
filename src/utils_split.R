@@ -36,6 +36,10 @@ create_reg_matrices_split <- function(DT, years, ages, conditions, families, lev
   # admissions, each with its own primary.
   stopifnot(level == "admission")
 
+  # Cleaned data written before the weights update has no weight column:
+  # treat it as unweighted (weight = 1)
+  if (!"weight" %in% names(DT)) DT[, weight := 1]
+
   # Sort by admission_id so DT_base$los (taken in first-appearance order) lines up
   # positionally with the sparse blocks, which place rows in sorted admission_id order.
   setorder(DT, admission_id)
@@ -44,7 +48,7 @@ create_reg_matrices_split <- function(DT, years, ages, conditions, families, lev
   DT_base <- DT[,
                 .SD[1],
                 by = admission_id,
-                .SDcols = c("age_start", "year_id", "los")]
+                .SDcols = c("age_start", "year_id", "los", "weight")]
 
   # Converting age_start and year_id to factors/dummies
   DT_base[, age_start := factor(age_start, levels = ages)]
@@ -143,8 +147,8 @@ create_reg_matrices_split <- function(DT, years, ages, conditions, families, lev
 
   # Creating regression matrix for each split equation and adding to list
   reg_matrices <- list(
-    condition_split_eq = cbind(los = DT_base$los, primary_mat, secondary_mat, year_mat),
-    family_age_split_eq = cbind(los = DT_base$los, primary_fam_mat, secondary_fam_mat, age_mat,
+    condition_split_eq = cbind(los = DT_base$los, weight = DT_base$weight, primary_mat, secondary_mat, year_mat),
+    family_age_split_eq = cbind(los = DT_base$los, weight = DT_base$weight, primary_fam_mat, secondary_fam_mat, age_mat,
                                 primary_age_mat, secondary_age_mat, year_mat)
   )
 

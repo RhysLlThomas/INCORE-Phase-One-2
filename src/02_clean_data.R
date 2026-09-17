@@ -47,6 +47,12 @@ dir.create(outdir, recursive = TRUE)
 # Loading dataset without reading fully into memory
 data <- open_dataset(indir)
 
+# Transformed data written before the weights update has no weight column:
+# continue unweighted (weight = 1), with a message so the analyst can see it
+if (!"weight" %in% names(data)) {
+  message("No weight column in the transformed data: continuing unweighted (weight = 1).")
+}
+
 #------------------------
 ##### Cleaning data #####
 #------------------------
@@ -64,8 +70,9 @@ for (i in 1:nrow(partitions)){
   t_read <- Sys.time()
   df <- data %>%
     filter((year_id==!!year) & (age_start==!!age) & (sex_id==!!sex)) %>%
-    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, los) %>%
+    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, los, any_of("weight")) %>%
     as_tibble()
+  if (!"weight" %in% names(df)) df <- df %>% mutate(weight = 1)
   secs_read <- as.numeric(difftime(Sys.time(), t_read, units = "secs"))
 
   # Skip if there's no data
@@ -94,7 +101,7 @@ for (i in 1:nrow(partitions)){
 
   t_write <- Sys.time()
   df %>%
-    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, family, is_primary, los) %>%
+    select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, family, is_primary, los, weight) %>%
     group_by(year_id, age_start, sex_id) %>%
     write_dataset(file.path(outdir, "cleaned_data.parquet"),
                   basename_template=paste(c(year, age, sex, "{{i}}.parquet"), collapse='_'),

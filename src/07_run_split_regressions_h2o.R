@@ -149,8 +149,15 @@ for (reg in reg_names) {
     # frame server-side, avoiding an O(parts^2) h2o.rbind loop
     data <- h2o.importFile(path = all_files)
 
-    # Setting predictors as all columns except "los"
-    predictors <- setdiff(colnames(data), c("los"))
+    # Setting predictors as all columns except "los" and "weight"
+    predictors <- setdiff(colnames(data), c("los", "weight"))
+
+    # Weights are optional: design matrices built before the weights update
+    # (or at the person_year level) have no weight column, and the fit is
+    # then unweighted. A weighted country must rebuild from 01_transform_data.R.
+    use_weights <- "weight" %in% colnames(data)
+    print(if (use_weights) "Weight column found: fitting weighted regressions." else
+          "No weight column: fitting UNWEIGHTED regressions (rebuild from 01_transform_data.R if you set weight_col).")
 
     # Column groups. Comorbidities are the secondary_ / secondary_fam_ dummies and
     # (family model) their age interactions; everything else is forced in.
@@ -212,6 +219,7 @@ for (reg in reg_names) {
     fit_OLS <- h2o.glm(
       x = c(forced_cols, comorbid_cols),
       y = "los",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       lambda = 0,
@@ -240,6 +248,7 @@ for (reg in reg_names) {
     fit_LASSO_sel <- h2o.glm(
       x = c(forced_cols, comorbid_cols),
       y = "los",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       alpha = 1,
@@ -290,6 +299,7 @@ for (reg in reg_names) {
     fit_LASSO <- h2o.glm(
       x = selected,
       y = "los",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       lambda = 0,
