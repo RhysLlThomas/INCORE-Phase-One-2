@@ -72,9 +72,16 @@ for (reg in reg_names) {
     # Read and bind all parquet chunks for this sex
     df <- bind_rows(lapply(all_files, read_parquet))
 
+    # Weights are optional: matrices built before the weights update (or at
+    # the person_year level) have no weight column and get unweighted means.
+    use_weights <- "weight" %in% names(df)
+    print(if (use_weights) "Weight column found: computing weighted mean LOS." else
+          "No weight column: computing UNWEIGHTED mean LOS (rebuild from 01_transform_data.R if you set weight_col).")
+    w_vec <- if (use_weights) df$weight else rep(1, nrow(df))
+
     # Separate LOS and predictors
     los_vec  <- df$los
-    preds_df <- df %>% select(-los, -weight)
+    preds_df <- df %>% select(-los, -any_of("weight"))
 
     # For person_year level, drop n_admissions (not a predictor)
     if (reg_level == "person_year" && "n_admissions" %in% names(preds_df)) {
@@ -83,7 +90,7 @@ for (reg in reg_names) {
 
     # Mean LOS per cell: for each 0/1 dummy column, mean of los where dummy == 1
     cell_counts_vec <- colSums(preds_df, na.rm = TRUE)
-    mean_los_vec    <- sapply(preds_df, function(col) mean(los_vec[col == 1], na.rm = TRUE))
+    mean_los_vec    <- sapply(preds_df, function(col) weighted.mean(los_vec[col == 1], w_vec[col == 1], na.rm = TRUE))
 
     # Build and save mean LOS per cell for this sex
     mean_los_df <- data.frame(
@@ -106,11 +113,11 @@ for (reg in reg_names) {
       sex      = sex,
       equation = reg,
       n        = length(los_vec),
-      mean_los = mean(los_vec, na.rm = TRUE),
+      mean_los = weighted.mean(los_vec, w_vec, na.rm = TRUE),
       stringsAsFactors = FALSE
     )
 
-    rm(df, preds_df, los_vec)
+    rm(df, preds_df, los_vec, w_vec)
     gc()
   }
 }
