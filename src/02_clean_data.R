@@ -17,6 +17,16 @@ library(arrow)
 source(file.path("src","utils.R"))
 source(file.path("src","utils_clean.R"))
 
+# Overnight (OECD) sensitivity: when enabled, this stage runs the overnight-
+# only pipeline (admissions with at least one overnight stay, los >= 2) and
+# reads/writes _OECD-suffixed folders, leaving the main pipeline's folders
+# untouched. run_all.R enables it via the INCORE_OECD environment variable;
+# to run this stage on the overnight pipeline standalone, run
+# Sys.setenv(INCORE_OECD = "1") first (or set oecd_inpatient_only to TRUE).
+oecd_inpatient_only <- identical(Sys.getenv("INCORE_OECD"), "1")
+suffix <- if (oecd_inpatient_only) "_OECD" else ""
+if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions only; using the _OECD folders.")
+
 #----------------
 ##### Setup #####
 #----------------
@@ -41,7 +51,7 @@ condition_families <- read_feather(file.path("maps", "condition_details.feather"
 indir <- file.path("data", "01_transformed_data", "transformed_data.parquet")
 
 # Creating output folder, if it doesn't already exist
-outdir <- file.path("data", "02_cleaned_data")
+outdir <- file.path("data", paste0("02_cleaned_data", suffix))
 dir.create(outdir, recursive = TRUE)
 
 # Loading dataset without reading fully into memory
@@ -69,7 +79,13 @@ for (i in 1:nrow(partitions)){
   # (icd_ver and icd_code are not needed downstream, which saves memory)
   t_read <- Sys.time()
   df <- data %>%
-    filter((year_id==!!year) & (age_start==!!age) & (sex_id==!!sex)) %>%
+    filter((year_id==!!year) & (age_start==!!age) & (sex_id==!!sex))
+  # Overnight (OECD) sensitivity: keep only admissions with at least one
+  # overnight stay. Filtering here, before the primary assignment and
+  # redistribution, means the redistribution proportions are computed on
+  # the overnight sample itself rather than inherited from the full sample.
+  if (oecd_inpatient_only) df <- df %>% filter(los > 1)
+  df <- df %>%
     select(bene_id, admission_id, year_id, sex_id, age_start, icd_level, condition, los, any_of("weight")) %>%
     as_tibble()
   if (!"weight" %in% names(df)) df <- df %>% mutate(weight = 1)
@@ -86,7 +102,7 @@ for (i in 1:nrow(partitions)){
   df <- get_primary_condition(df, NEC_other_families=NEC_other_families)
 
   # Saving out primary condition counts
-  primary_counts <- save_primary_counts(df, year=year, age=age, sex=sex, condition_families=condition_families)
+  primary_counts <- save_primary_counts(df, year=year, age=age, sex=sex, condition_families=condition_families, dir_suffix=suffix)
 
   # Redistribute _NEC and _gc conditions
   df <- redistribute_conditions(df, primary_counts=primary_counts, condition_families=condition_families)
