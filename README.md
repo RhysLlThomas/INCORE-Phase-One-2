@@ -20,16 +20,16 @@ This repository contains the INCORE Phase 1 analysis pipeline: a set of R script
    - See the Source Code section below; `src/01_transform_data_England.R` is a completed example
 6. **Run the pipeline**
    - Easiest: `source("run_all.R")` runs every stage in order with progress reporting, timing, and cache handling
-   - Or run each step manually, in numerical order:
+   - Or run each step manually:
      - `src/01_transform_data.R`
      - `src/02_clean_data.R`
      - `src/03_prep_inputs.R`
      - `src/04_run_regressions.R`
-     - `src/05_mean_days.R`
      - `src/06_prep_inputs_split.R`
+     - `src/05_mean_days.R` (after 06, so the observed means cover the split equations too)
      - `src/07_run_split_regressions_h2o.R`
 7. **Share the outputs**
-   - When the run completes, share the contents of `results/` and `results_split/` with the coordinating team. These contain only aggregate coefficients, counts, and fit statistics -- but apply your own institution's disclosure rules (e.g. small-cell suppression) before sharing
+   - When the run completes, share the contents of `results/`, `results_split/`, `results_OECD/` and `results_split_OECD/` with the coordinating team. These contain only aggregate coefficients, counts, and fit statistics -- but apply your own institution's disclosure rules (e.g. small-cell suppression) before sharing
 
 ## Project Structure
 
@@ -44,7 +44,7 @@ This repository contains the INCORE Phase 1 analysis pipeline: a set of R script
   - `02_clean_data.R` > assigns primary conditions and redistributes non-specific codes
   - `03_prep_inputs.R` > builds the design matrices for the four original equations
   - `04_run_regressions.R` > runs the four original equations (LASSO then GLM refit, via h2o)
-  - `05_mean_days.R` > computes observed (unadjusted) mean length of stay per cell
+  - `05_mean_days.R` > computes observed (unadjusted) mean length of stay per cell, for all six equations
   - `06_prep_inputs_split.R` > builds the design matrices for the two primary/comorbidity split equations
   - `07_run_split_regressions_h2o.R` > runs the split equations (full OLS and LASSO -> post-selection OLS, via h2o)
   - `find_reference_condition.R` > optional helper documenting how the split models' reference condition was chosen
@@ -54,8 +54,9 @@ This repository contains the INCORE Phase 1 analysis pipeline: a set of R script
 - `run_all.R` > runs the full pipeline end to end (recommended entry point)
 - `run_all_main.R` > re-runs only the original four equations (steps 03 -> 04 -> 05)
 - `check_01_output.R` > optional fast check of step 01's output
-- `results/` > created by steps 04 and 05 (original four equations)
+- `results/` > created by steps 04 and 05 (the original four equations' regression output, plus observed mean LOS files for all six equations)
 - `results_split/` > created by step 07 (split equations)
+- `results_OECD/`, `results_split_OECD/` > the same results for the overnight-only (LOS >= 2) sample; the overnight pass also writes `data/02_cleaned_data_OECD/` and `data/03_prepped_inputs_OECD/`
 - `maps/` > directory for various maps
   - `age_groups.feather` > the binned age groups used in this project
   - `icd_map.feather` > map from ICD codes (versions 9 and 10) to the conditions used in this project
@@ -87,6 +88,8 @@ Missing any of these variables in the data is okay, but some modification to the
 
 **Survey weights:** countries whose data are a weighted sample (survey-design or discharge weights) set `weight_col` in `01_transform_data.R`. The weight is validated (it must be positive), carried into every design matrix, applied as an observation weight in all regressions, and used for the weighted mean LOS in step 05. Everyone else leaves `weight_col = NULL`, which assigns every admission a weight of 1 and reproduces the unweighted analysis exactly. The estimation scripts also accept design matrices built before weights existed: they fall back to an unweighted fit and print a message saying so.
 
+**Overnight-only (OECD) analysis:** alongside the standard analysis of all admissions, the pipeline produces a second, parallel set of results restricted to admissions with at least one overnight stay (LOS >= 2 in our coding), matching the OECD inpatient definition. The restriction is applied at step 02, before the primary-condition assignment and redistribution, so the redistribution proportions are computed on the overnight sample itself. Everything the overnight pass produces goes to `_OECD`-suffixed folders (`data/02_cleaned_data_OECD`, `data/03_prepped_inputs_OECD`, `results_OECD/`, `results_split_OECD/`), leaving the standard outputs untouched. See "The overnight (OECD) pass" under Source Code for how to run it.
+
 ### 01_transformed_data
 
 The data contained in this folder is written out by the `01_transform_data.R` script. This data contains standardised column names, pivots each row to be long on diagnoses/ICD codes (i.e. each admission will have 1 row per ICD code), and maps ICD codes to standard conditions.
@@ -105,7 +108,7 @@ The data contained in this folder is written out by `03_prep_inputs.R` and `06_p
 
 The code in this project is all written in the R statistical programming language. The exact package versions are recorded in `renv.lock` and restored with `renv::restore()`.
 
-The scripts are run in numerical order. Most are intended to run without any modification; the exception is `01_transform_data.R`, due to differences in raw input data.
+The scripts are run in numerical order, with one exception: `05_mean_days.R` runs after `06_prep_inputs_split.R`, so its observed means cover the split equations as well as the original four (`run_all.R` orders the stages this way automatically). Most scripts are intended to run without any modification; the exception is `01_transform_data.R`, due to differences in raw input data.
 
 Each script contains section titles and comments to help explain various processes. Section titles appear as:
 
@@ -123,10 +126,22 @@ The recommended way to run the pipeline. It runs every stage in order, reports f
 
 - `clean_start` (default `TRUE`) -- delete each stage's outputs before it runs, so files from a previous run can never survive underneath a new one
 - `new_source_data` (default `TRUE` in the call at the bottom of the script) -- also clear the two caches that would otherwise reuse results built from a previous version of your raw data (`processed_by_year/` and the completed-equation marker files in `results/`)
-- `run_main_pipeline` (default `TRUE` in the call at the bottom) -- include the original four equations (03 -> 04 -> 05) as well as the split models
-- `start_from` -- resume from "01", "02", "06" or "07" after a failure, keeping earlier stages' outputs
+- `run_main_pipeline` (default `TRUE` in the call at the bottom) -- include the original four equations (03 -> 04) as well as the split models; the observed means (05) run either way, after 06, covering whichever matrices exist
+- `oecd_sensitivity` (default `TRUE` in the call at the bottom) -- after the standard pass, run the overnight (OECD) pass: stages 02 onwards re-run on admissions with LOS >= 2, into the `_OECD` folders
+- `oecd_only` -- run ONLY the overnight pass, reusing `data/01_transformed_data` from an earlier run
+- `start_from` -- resume the standard pass from "01", "02", "06" or "07" after a failure, keeping earlier stages' outputs
 
 `run_all_main.R` is a smaller companion that re-runs only the original four equations (03 -> 04 -> 05) when the transformed and cleaned data are already in place.
+
+### The overnight (OECD) pass
+
+The overnight analysis (see the Data section) is the same pipeline run a second time with a switch set: step 02 keeps only admissions with LOS >= 2, and every stage from 02 onwards reads and writes `_OECD`-suffixed folders. Step 01 is shared between the two passes, so the expensive raw-data processing happens once.
+
+Three ways to run it:
+
+- **As part of the full run** -- `run_all.R` as shipped runs the standard pass and then the overnight pass
+- **On its own** -- `run_pipeline(run_main_pipeline = TRUE, oecd_only = TRUE)` re-runs just the overnight pass against the existing step-01 output
+- **Stage by stage** -- run `Sys.setenv(INCORE_OECD = "1")` in your session, then source any of steps 02-07 to run that stage on the overnight pipeline (each script prints "OVERNIGHT (OECD) RUN" so you can see which mode it is in). `Sys.unsetenv("INCORE_OECD")` returns to the standard pipeline
 
 ### 01_transform_data.R
 
@@ -210,7 +225,7 @@ Four behaviours to be aware of:
 
 ### 05_mean_days.R
 
-Computes the OBSERVED (unadjusted) mean length of stay for every cell of every design matrix -- for each 0/1 dummy, the mean `los` where the dummy is 1 -- plus an overall mean by sex. No regressions and no h2o. When the matrices carry a `weight` column the means are weighted (cell counts remain sample row counts); otherwise they are plain means, with a message either way. Outputs `*_mean_los.csv` per equation x sex and `admission_mean_los_by_gender.csv` to `results/`. These observed means are used for descriptive comparison against the model-based results.
+Computes the OBSERVED (unadjusted) mean length of stay for every cell of every design matrix -- for each 0/1 dummy, the mean `los` where the dummy is 1 -- plus an overall mean by sex. No regressions and no h2o. It covers all six equations: the original four plus the two primary/comorbidity split equations, so the split cells (each `primary_*` and `secondary_*` dummy) get observed means and counts too. An equation whose matrices have not been built is skipped with a message, which is why the script runs after `06_prep_inputs_split.R` in `run_all.R` despite its number. When the matrices carry a `weight` column the means are weighted (cell counts remain sample row counts); otherwise they are plain means, with a message either way. Outputs `*_mean_los.csv` per equation x sex and `admission_mean_los_by_gender.csv` to `results/`. These observed means are used for descriptive comparison against the model-based results.
 
 ### 06_prep_inputs_split.R
 
@@ -261,10 +276,11 @@ For teams that ran an earlier version of the pipeline (steps 01-04 only), this v
 
 - **Adult (18+) sample restriction** -- `01_transform_data.R` now filters to ages 18 and over on individual ages (later stages only see 5-year bands, so the cut must happen there), and steps 04, 05 and 07 refuse to run on design matrices built without it. If you built your data with an earlier version, re-run from step 01 -- the year-mapping cache is reused, so this is much cheaper than the original run
 - **`run_all.R` / `run_all_main.R`** -- one-command orchestration with progress reporting, stage timing, clean-start handling, and resume points
-- **`05_mean_days.R`** -- observed mean length of stay per cell, for descriptive comparison with the model-based results
+- **`05_mean_days.R`** -- observed mean length of stay per cell, for descriptive comparison with the model-based results; covers the split equations as well as the original four
 - **Primary/comorbidity split models** -- `06_prep_inputs_split.R` (+ `utils_split.R`) and `07_run_split_regressions_h2o.R`, estimating each condition's contribution as principal diagnosis separately from its contribution as a comorbidity, with a common reference condition (`lri`) across countries
 - **Faster step 02** -- the cleaning step was reimplemented with vectorised joins (`utils_clean.R`); same rules and outputs, much faster on large data, and now seeded for reproducibility
 - **Resume and caching** -- step 01 caches its per-year condition mapping in `processed_by_year/`, and step 04 skips already-completed fits, so interrupted multi-hour runs resume instead of restarting
+- **Overnight-only (OECD) analysis** -- a parallel set of results for admissions with at least one overnight stay (LOS >= 2), produced by re-running stages 02 onwards into `_OECD`-suffixed folders. Included in `run_all.R` by default, and runnable on its own via `oecd_only` or per stage via the `INCORE_OECD` environment variable
 - **Optional survey weights** -- countries with weighted samples set `weight_col` in step 01; the weight flows into the design matrices, all regressions, and the observed means. Unweighted countries are unaffected: `weight = 1` reproduces the previous results exactly, and the estimation scripts fall back to unweighted fits on matrices built before weights existed
 - **Missing-LOS exclusion** -- admissions with a missing length of stay are dropped in step 01, alongside the 18+ rule, so every downstream stage shares one clean sample
 - **`check_01_output.R`** -- a fast sanity check of step 01's output
