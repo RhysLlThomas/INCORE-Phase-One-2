@@ -47,11 +47,21 @@ if (!h2o.clusterIsUp()) stop("h2o cluster did not start on port ", h2o_port, "."
 reg_level <- "admission"
 reg_names <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq")
 
+# Overnight (OECD) sensitivity: when enabled, this stage runs the overnight-
+# only pipeline (admissions with at least one overnight stay, los >= 2) and
+# reads/writes _OECD-suffixed folders, leaving the main pipeline's folders
+# untouched. run_all.R enables it via the INCORE_OECD environment variable;
+# to run this stage on the overnight pipeline standalone, run
+# Sys.setenv(INCORE_OECD = "1") first (or set oecd_inpatient_only to TRUE).
+oecd_inpatient_only <- identical(Sys.getenv("INCORE_OECD"), "1")
+suffix <- if (oecd_inpatient_only) "_OECD" else ""
+if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions only; using the _OECD folders.")
+
 # Setting input folder
-indir <- file.path("data", "03_prepped_inputs")
+indir <- file.path("data", paste0("03_prepped_inputs", suffix))
 
 # Creating output folder, if it doesn't already exist
-outdir <- file.path("results")
+outdir <- paste0("results", suffix)
 dir.create(outdir, recursive = TRUE)
 
 # Sex codes as they appear in the design-matrix filenames. 03_prep_inputs.R names
