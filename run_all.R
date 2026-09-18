@@ -198,8 +198,10 @@ run_pipeline <- function(
   }
 
   # 05 runs AFTER 06 so the observed means cover the split equations as well
-  # as the original four; it skips any equation whose matrices are absent
-  if (!oecd_only && (run_main_pipeline || runs("06"))) {
+  # as the original four; it skips any equation whose matrices are absent.
+  # Each equation's means are written next to its regression output
+  # (results/ for the original four, results_split/ for the split pair).
+  if (!oecd_only) {
     stage("05 mean days", "05_mean_days.R")
   }
 
