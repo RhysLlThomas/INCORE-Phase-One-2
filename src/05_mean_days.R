@@ -31,9 +31,14 @@ if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions onl
 # Setting input folder
 indir <- file.path("data", paste0("03_prepped_inputs", suffix))
 
-# Creating output folder, if it doesn't already exist
-outdir <- paste0("results", suffix)
+# Creating output folders, if they don't already exist. Each equation's
+# observed means are saved next to its regression output: the original four
+# equations' means go to results*, the split equations' means to
+# results_split*. The overall mean by sex goes to results*.
+outdir       <- paste0("results", suffix)
+outdir_split <- paste0("results_split", suffix)
 dir.create(outdir, recursive = TRUE)
+dir.create(outdir_split, recursive = TRUE)
 
 # Sex codes as they appear in the design-matrix filenames: 03_prep_inputs.R
 # renders sex as expand.grid()'s factor code, M -> 1, F -> 2 (see the note in
@@ -67,6 +72,9 @@ for (reg in reg_names) {
 
   # Getting filename as combination of regression level and regression equation
   filename <- paste0(reg_level, "_", reg)
+
+  # The split equations' means belong with the split regression output
+  eq_outdir <- if (reg %in% c("condition_split_eq", "family_age_split_eq")) outdir_split else outdir
 
   # Loop over sex
   for (sex in sexes) {
@@ -118,7 +126,7 @@ for (reg in reg_names) {
 
     write.csv(
       mean_los_df,
-      file.path(outdir, paste0(filename, "_", sex, "_mean_los.csv")),
+      file.path(eq_outdir, paste0(filename, "_", sex, "_mean_los.csv")),
       row.names = FALSE
     )
 
@@ -139,6 +147,10 @@ for (reg in reg_names) {
 }
 
 # Save mean LOS by sex
+if (length(gender_summary) == 0) {
+  stop("No design matrices found under ", indir, ": nothing to summarise. ",
+       "Run 03_prep_inputs.R and/or 06_prep_inputs_split.R first.", call. = FALSE)
+}
 gender_summary_df <- do.call(rbind, gender_summary)
 
 write.csv(
