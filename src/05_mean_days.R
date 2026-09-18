@@ -10,13 +10,29 @@ library(arrow)
 # Setting regression level and equation names
 # Regression level should be specified as either "admission" or "person_year"
 reg_level <- "admission"
-reg_names <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq")
+
+# The four original equations plus the two primary/comorbidity split
+# equations, so observed cell means and counts cover the split cells too.
+# An equation whose matrices are absent (the split pair before 06 has run,
+# or any equation at the person_year level) is skipped with a message.
+reg_names <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq",
+               "condition_split_eq", "family_age_split_eq")
+
+# Overnight (OECD) sensitivity: when enabled, this stage runs the overnight-
+# only pipeline (admissions with at least one overnight stay, los >= 2) and
+# reads/writes _OECD-suffixed folders, leaving the main pipeline's folders
+# untouched. run_all.R enables it via the INCORE_OECD environment variable;
+# to run this stage on the overnight pipeline standalone, run
+# Sys.setenv(INCORE_OECD = "1") first (or set oecd_inpatient_only to TRUE).
+oecd_inpatient_only <- identical(Sys.getenv("INCORE_OECD"), "1")
+suffix <- if (oecd_inpatient_only) "_OECD" else ""
+if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions only; using the _OECD folders.")
 
 # Setting input folder
-indir <- file.path("data", "03_prepped_inputs")
+indir <- file.path("data", paste0("03_prepped_inputs", suffix))
 
 # Creating output folder, if it doesn't already exist
-outdir <- file.path("results")
+outdir <- paste0("results", suffix)
 dir.create(outdir, recursive = TRUE)
 
 # Sex codes as they appear in the design-matrix filenames: 03_prep_inputs.R
