@@ -22,6 +22,10 @@
 #     APPENDED to per fit and so must start empty
 # Coefficient and mean_los CSVs are overwritten by name and need no cleaning.
 # Nothing else is touched -- not the source data, not maps/, not results_split/.
+#
+# NOTE: 05 covers all six equations. When the split matrices exist (06 has
+# run), it also refreshes their observed means; otherwise it skips them
+# with a message.
 # =============================================================================
 
 run_main_pipeline <- function(clean_start = TRUE) {
