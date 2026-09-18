@@ -398,7 +398,7 @@ get_conditions <- function(df, icd_cols, icd_condition_map){
 ##### 02_clean_data #####
 #########################
 
-save_primary_counts <- function(df, year, age, sex, condition_families){
+save_primary_counts <- function(df, year, age, sex, condition_families, dir_suffix = ""){
   
   # Getting primary condition row counts by year/age/sex/family/condition
   primary_counts <- df %>%
@@ -416,7 +416,7 @@ save_primary_counts <- function(df, year, age, sex, condition_families){
   # Saving out counts, partitioned by year/age/sex
   primary_counts %>%
     group_by(year_id, age_start, sex_id) %>%
-    write_dataset(file.path("maps", "primary_condition_proportions.parquet"),
+    write_dataset(file.path("maps", paste0("primary_condition_proportions", dir_suffix, ".parquet")),
                   basename_template=paste0(year,"_",age,"_",sex,"_","_{{i}}.parquet"))
   
   return(primary_counts)
