@@ -54,8 +54,8 @@ This repository contains the INCORE Phase 1 analysis pipeline: a set of R script
 - `run_all.R` > runs the full pipeline end to end (recommended entry point)
 - `run_all_main.R` > re-runs only the original four equations (steps 03 -> 04 -> 05)
 - `check_01_output.R` > optional fast check of step 01's output
-- `results/` > created by steps 04 and 05 (the original four equations' regression output, plus observed mean LOS files for all six equations)
-- `results_split/` > created by step 07 (split equations)
+- `results/` > created by steps 04 and 05 (the original four equations' regression output and observed mean LOS files, plus the overall mean by sex)
+- `results_split/` > created by steps 05 and 07 (the split equations' regression output and observed mean LOS files)
 - `results_OECD/`, `results_split_OECD/` > the same results for the overnight-only (LOS >= 2) sample; the overnight pass also writes `data/02_cleaned_data_OECD/` and `data/03_prepped_inputs_OECD/`
 - `maps/` > directory for various maps
   - `age_groups.feather` > the binned age groups used in this project
@@ -225,7 +225,7 @@ Four behaviours to be aware of:
 
 ### 05_mean_days.R
 
-Computes the OBSERVED (unadjusted) mean length of stay for every cell of every design matrix -- for each 0/1 dummy, the mean `los` where the dummy is 1 -- plus an overall mean by sex. No regressions and no h2o. It covers all six equations: the original four plus the two primary/comorbidity split equations, so the split cells (each `primary_*` and `secondary_*` dummy) get observed means and counts too. An equation whose matrices have not been built is skipped with a message, which is why the script runs after `06_prep_inputs_split.R` in `run_all.R` despite its number. When the matrices carry a `weight` column the means are weighted (cell counts remain sample row counts); otherwise they are plain means, with a message either way. Outputs `*_mean_los.csv` per equation x sex and `admission_mean_los_by_gender.csv` to `results/`. These observed means are used for descriptive comparison against the model-based results.
+Computes the OBSERVED (unadjusted) mean length of stay for every cell of every design matrix -- for each 0/1 dummy, the mean `los` where the dummy is 1 -- plus an overall mean by sex. No regressions and no h2o. It covers all six equations: the original four plus the two primary/comorbidity split equations, so the split cells (each `primary_*` and `secondary_*` dummy) get observed means and counts too. An equation whose matrices have not been built is skipped with a message, which is why the script runs after `06_prep_inputs_split.R` in `run_all.R` despite its number. When the matrices carry a `weight` column the means are weighted (cell counts remain sample row counts); otherwise they are plain means, with a message either way. Each equation's `*_mean_los.csv` is saved next to its regression output (the original four equations to `results/`, the split equations to `results_split/`), and the overall `admission_mean_los_by_gender.csv` goes to `results/`. These observed means are used for descriptive comparison against the model-based results.
 
 ### 06_prep_inputs_split.R
 
