@@ -24,6 +24,16 @@ library(data.table)
 library(arrow)
 source(file.path("src","utils.R"))
 
+# Overnight (OECD) sensitivity: when enabled, this stage runs the overnight-
+# only pipeline (admissions with at least one overnight stay, los >= 2) and
+# reads/writes _OECD-suffixed folders, leaving the main pipeline's folders
+# untouched. run_all.R enables it via the INCORE_OECD environment variable;
+# to run this stage on the overnight pipeline standalone, run
+# Sys.setenv(INCORE_OECD = "1") first (or set oecd_inpatient_only to TRUE).
+oecd_inpatient_only <- identical(Sys.getenv("INCORE_OECD"), "1")
+suffix <- if (oecd_inpatient_only) "_OECD" else ""
+if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions only; using the _OECD folders.")
+
 #----------------
 ##### Setup #####
 #----------------
@@ -51,8 +61,8 @@ reg_level <- "admission"
 reg_names <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq")
 
 # Setting input and output folders
-indir <- file.path("data", "02_cleaned_data", "cleaned_data.parquet")
-outdir <- file.path("data", "03_prepped_inputs")
+indir <- file.path("data", paste0("02_cleaned_data", suffix), "cleaned_data.parquet")
+outdir <- file.path("data", paste0("03_prepped_inputs", suffix))
 
 # Loading dataset without reading fully into memory
 data <- open_dataset(indir)
