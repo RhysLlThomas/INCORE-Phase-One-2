@@ -52,8 +52,16 @@ icd_ver_col <- "icd_ver"
 icd_ver_col_map <- list('10'='icd10')
 
 # Length of stay can be provided as a standalone column or can be extracted from
-# both a discharge date column and an admission date column.
+# both a discharge date column and an admission date column. INCORE counts
+# bed-days as calendar days spanned: a same-day separation = 1, a stay spanning
+# two consecutive calendar days = 2 -- i.e. (discharge - admission) + 1.
+# England's Stata prep computes los this way already (beddays = admiend -
+# admistart + 1), so the ready-made column is supplied here.
 los_col <- "los"
+
+# Survey/sampling weight. England's HES extract is population data with no
+# survey weights, so this stays NULL and every record gets weight = 1.
+weight_col <- NULL
 
 # England: 40 diagnosis columns icd_1 ... icd_40 (primary diagnosis = icd_1).
 # Anchored, ordered patterns guarantee the diagnosis priority order regardless
@@ -78,7 +86,7 @@ df <- read_data(filepath)
 # Subsetting data to specified columns only
 df <- subset_cols(df, select_cols=c(beneficiary_id_col, admission_id_cols, year_col, age_col, sex_col,
                                     discharge_date_col, admission_date_col,
-                                    birth_date_col,icd_ver_col, los_col, icd_cols))
+                                    birth_date_col,icd_ver_col, los_col, weight_col, icd_cols))
 #---------------------
 ##### Processing #####
 #---------------------
@@ -112,6 +120,28 @@ df <- get_icd_version(df, icd_ver_col=icd_ver_col, icd_ver_col_map=icd_ver_col_m
 
 # Create column for los
 df <- get_length_of_stay(df, los_col=los_col, discharge_date_col=discharge_date_col, admission_date_col=admission_date_col)
+
+# INCORE inclusion: drop admissions with missing length of stay. LOS is the model
+# outcome; an NA los otherwise propagates to every stage and makes LASSO select
+# nothing (observed Jan 2026). Filtered here, at sample definition, alongside the
+# 18+ rule, so ALL downstream stages share one clean sample.
+n_before <- nrow(df)
+df <- df %>% filter(!is.na(los))
+message("LOS filter: removed ", format(n_before - nrow(df), big.mark = ","),
+        " of ", format(n_before, big.mark = ","), " admissions with missing LOS")
+
+# Create column for weight (defaults to 1 if no weight column provided)
+if (!is.null(weight_col)) {
+  df <- df %>% mutate(weight = as.numeric(.data[[weight_col]]))
+  n_bad <- sum(is.na(df$weight) | df$weight <= 0)
+  if (n_bad > 0) {
+    stop(format(n_bad, big.mark = ","), " admissions have a missing or non-positive '",
+         weight_col, "' value -- weights must be positive numbers.")
+  }
+} else {
+  df <- df %>% mutate(weight = 1)
+}
+
 
 # Map ICD codes to conditions, chunked by year. get_conditions() pivots the
 # diagnosis columns to long format; on the full England HES data a single pivot
@@ -174,9 +204,23 @@ for (i in seq_along(out_files)) {
   # (this makes re-running 01 after the update cheap: the mapping cache is
   # reused and the children are dropped here). On a fresh mapping it removes
   # nothing.
-  readRDS(out_files[i]) %>%
-    filter(age >= 18) %>%
-    select(bene_id, admission_id, year_id, sex_id, age_start, icd_ver, icd_level, icd_code, condition, los) %>%
+  d <- readRDS(out_files[i]) %>%
+    filter(age >= 18, !is.na(los))
+  # A cache mapped before the weights update has no weight column. With
+  # weight_col unset that is simply an unweighted country (weight = 1); with
+  # weight_col SET the cached years are missing the weights, so stop rather
+  # than silently write an unweighted dataset.
+  if (!"weight" %in% names(d)) {
+    if (!is.null(weight_col)) {
+      stop("Cached year ", years[i], " in processed_by_year/ predates the weights ",
+           "update but weight_col is set. Delete processed_by_year/ (or run ",
+           "run_all.R with new_source_data = TRUE) so the weights are mapped in.")
+    }
+    message("Cached year ", years[i], " has no weight column: continuing unweighted (weight = 1).")
+    d <- d %>% mutate(weight = 1)
+  }
+  d %>%
+    select(bene_id, admission_id, year_id, sex_id, age_start, icd_ver, icd_level, icd_code, condition, los, weight) %>%
     group_by(year_id, age_start, sex_id) %>%
     write_dataset(file.path(outdir,'transformed_data.parquet'),
                   basename_template=paste0(file_path_sans_ext(basename(filepath)),'_{{i}}.parquet'),

@@ -4,6 +4,16 @@ library(arrow)
 source(file.path("src","utils.R"))         # shared helpers (chunked_save, tidyverse verbs)
 source(file.path("src","utils_split.R"))   # create_reg_matrices_split
 
+# Overnight (OECD) sensitivity: when enabled, this stage runs the overnight-
+# only pipeline (admissions with at least one overnight stay, los >= 2) and
+# reads/writes _OECD-suffixed folders, leaving the main pipeline's folders
+# untouched. run_all.R enables it via the INCORE_OECD environment variable;
+# to run this stage on the overnight pipeline standalone, run
+# Sys.setenv(INCORE_OECD = "1") first (or set oecd_inpatient_only to TRUE).
+oecd_inpatient_only <- identical(Sys.getenv("INCORE_OECD"), "1")
+suffix <- if (oecd_inpatient_only) "_OECD" else ""
+if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions only; using the _OECD folders.")
+
 # =============================================================================
 # 06_prep_inputs_split.R
 # -----------------------------------------------------------------------------
@@ -42,9 +52,9 @@ reg_level <- "admission"
 reg_names <- c("condition_split_eq", "family_age_split_eq")
 
 # Setting input and output folders
-#indir <- file.path("data", "02_cleaned_data", "cleaned_data.parquet")
+indir <- file.path("data", paste0("02_cleaned_data", suffix), "cleaned_data.parquet")
 indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/02_cleaned_data//cleaned_data.parquet/"
-#outdir <- file.path("data", "03_prepped_inputs")
+outdir <- file.path("data", paste0("03_prepped_inputs", suffix))
 outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs"
 
 # Loading dataset without reading fully into memory

@@ -36,6 +36,10 @@ create_reg_matrices_split <- function(DT, years, ages, conditions, families, lev
   # admissions, each with its own primary.
   stopifnot(level == "admission")
 
+  # Cleaned data written before the weights update has no weight column:
+  # treat it as unweighted (weight = 1)
+  if (!"weight" %in% names(DT)) DT[, weight := 1]
+
   # Sort by admission_id so DT_base$los (taken in first-appearance order) lines up
   # positionally with the sparse blocks, which place rows in sorted admission_id order.
   setorder(DT, admission_id)

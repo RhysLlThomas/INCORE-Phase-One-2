@@ -2,8 +2,13 @@
 # run_all.R  --  runs the full INCORE pipeline end to end.
 #
 #   01_transform_data.R -> 02_clean_data.R
-#     -> [03_prep_inputs.R -> 04_run_regressions.R -> 05_mean_days.R]
-#     -> 06_prep_inputs_split.R -> 07_run_split_regressions_h2o.R
+#     -> [03_prep_inputs.R -> 04_run_regressions.R]
+#     -> 06_prep_inputs_split.R -> 05_mean_days.R
+#     -> 07_run_split_regressions_h2o.R
+#
+# 05 runs AFTER 06 (out of numeric order) so its observed cell means and
+# counts cover the primary/comorbidity split equations as well as the
+# original four.
 #
 # HOW TO RUN. From the project root (open INCORE.Rproj, or setwd() there), since
 # every script uses paths relative to it (src/, data/, maps/, results/):
@@ -42,8 +47,22 @@ run_pipeline <- function(
   #     so stale files would make it silently keep the old results.
   new_source_data = FALSE,
 
-  # Also run the ORIGINAL four equations (03_prep_inputs.R -> 04 -> 05).
+  # Also run the ORIGINAL four equations (03_prep_inputs.R -> 04). Note that
+  # 05 runs either way, after 06: it computes observed means and counts for
+  # whichever design matrices exist, split equations included.
   run_main_pipeline = FALSE,
+
+  # Overnight (OECD) sensitivity: after the standard pass, re-run stages 02
+  # onwards on admissions with at least one overnight stay (los >= 2), into
+  # _OECD-suffixed data and results folders. The overnight pass repeats
+  # whatever the standard pass ran (02, 06, 05, 07, plus 03/04 when
+  # run_main_pipeline is TRUE) and leaves the standard outputs untouched.
+  oecd_sensitivity = FALSE,
+
+  # Run ONLY the overnight pass, reusing data/01_transformed_data from an
+  # earlier run -- for (re)producing the overnight results without repeating
+  # the standard pipeline. Implies oecd_sensitivity = TRUE.
+  oecd_only = FALSE,
 
   # Resume point: "01", "02", "06" or "07". Earlier stages are skipped and
   # their outputs left alone, so a completed 01 is not thrown away when a
@@ -92,9 +111,20 @@ run_pipeline <- function(
     stop("new_source_data = TRUE requires start_from = \"01\": a changed source file ",
          "has to be re-read and re-mapped from the beginning.", call. = FALSE)
   }
+  if (oecd_only) {
+    oecd_sensitivity <- TRUE
+    if (new_source_data) {
+      stop("new_source_data = TRUE re-reads the raw data from stage 01, which ",
+           "oecd_only skips. Run the standard pipeline first.", call. = FALSE)
+    }
+    if (!dir.exists(file.path("data", "01_transformed_data", "transformed_data.parquet"))) {
+      stop("oecd_only = TRUE reuses data/01_transformed_data from an earlier run, ",
+           "which does not exist yet. Run the standard pipeline first.", call. = FALSE)
+    }
+  }
   from <- match(start_from, stage_order)
-  runs <- function(st) match(st, stage_order) >= from
-  if (from > 1) message("\nResuming at stage ", start_from, "; stages ",
+  runs <- function(st) !oecd_only && match(st, stage_order) >= from
+  if (from > 1 && !oecd_only) message("\nResuming at stage ", start_from, "; stages ",
                         paste(stage_order[seq_len(from - 1)], collapse = ", "),
                         " are skipped and their outputs left in place.")
 
@@ -103,7 +133,7 @@ run_pipeline <- function(
                "06" = file.path("data", "03_prepped_inputs"),
                "07" = "results_split")
 
-  if (clean_start) {
+  if (clean_start && !oecd_only) {
     hdr("CLEAN START: removing intermediate outputs")
     for (d in outputs[stage_order[from:length(stage_order)]]) {
       if (dir.exists(d)) {
@@ -155,10 +185,9 @@ run_pipeline <- function(
     report(file.path("data", "02_cleaned_data", "cleaned_data.parquet"), "cleaned data")
   }
 
-  if (run_main_pipeline) {
+  if (run_main_pipeline && !oecd_only) {
     stage("03 prep inputs (original four equations)", "03_prep_inputs.R")
     stage("04 run regressions", "04_run_regressions.R")
-    stage("05 mean days",       "05_mean_days.R")
   }
 
   if (runs("06")) {
@@ -168,28 +197,99 @@ run_pipeline <- function(
     }
   }
 
+  # 05 runs AFTER 06 so the observed means cover the split equations as well
+  # as the original four; it skips any equation whose matrices are absent.
+  # Each equation's means are written next to its regression output
+  # (results/ for the original four, results_split/ for the split pair).
+  if (!oecd_only) {
+    stage("05 mean days", "05_mean_days.R")
+  }
+
   if (runs("07")) {
     stage("07 split regressions", "07_run_split_regressions_h2o.R")
+  }
+
+  # ---- overnight (OECD) pass ------------------------------------------------
+  # Same stages, run again with the INCORE_OECD switch set: 02 filters to
+  # los >= 2 and every stage reads/writes the _OECD folders. The standard
+  # outputs above are not touched.
+
+  if (oecd_sensitivity) {
+    hdr("OVERNIGHT (OECD) PASS: admissions with los >= 2, into the _OECD folders")
+
+    if (clean_start) {
+      oecd_dirs <- c(file.path("data", "02_cleaned_data_OECD"),
+                     file.path("data", "03_prepped_inputs_OECD"),
+                     "results_split_OECD",
+                     file.path("maps", "primary_condition_proportions_OECD.parquet"))
+      for (d in oecd_dirs) {
+        if (dir.exists(d)) { unlink(d, recursive = TRUE, force = TRUE); message("   removed ", d) }
+        else message("   (absent)  ", d)
+      }
+      if (run_main_pipeline) {
+        eqs <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq")
+        pat <- paste0("^admission_(", paste(eqs, collapse = "|"), ")_[^_]+_",
+                      "(coefs_LASSO|coefs_GLM|cell_counts|mean_los)\\.csv$")
+        old_csv <- c(list.files("results_OECD", pattern = pat, full.names = TRUE),
+                     file.path("results_OECD", c("LASSO_model_stats.csv", "GLM_model_stats.csv",
+                                                 "admission_mean_los_by_gender.csv")))
+        n <- 0
+        for (f in old_csv) if (file.exists(f)) { file.remove(f); n <- n + 1 }
+        message("   removed ", n, " file(s) from results_OECD/")
+      }
+    }
+
+    # The switch survives each stage's rm(list = ls()) because it lives in
+    # the environment, not the R workspace; on.exit clears it even on failure
+    Sys.setenv(INCORE_OECD = "1")
+    on.exit(Sys.unsetenv("INCORE_OECD"), add = TRUE)
+
+    stage("OECD 02 clean data (overnight sample)", "02_clean_data.R")
+    report(file.path("data", "02_cleaned_data_OECD", "cleaned_data.parquet"), "OECD cleaned data")
+
+    if (run_main_pipeline) {
+      stage("OECD 03 prep inputs (original four equations)", "03_prep_inputs.R")
+      stage("OECD 04 run regressions", "04_run_regressions.R")
+    }
+
+    stage("OECD 06 prep split inputs", "06_prep_inputs_split.R")
+    for (eq in c("condition_split_eq", "family_age_split_eq")) {
+      report(file.path("data", "03_prepped_inputs_OECD", paste0("admission_", eq, ".parquet")),
+             paste0("OECD ", eq))
+    }
+
+    # As in the standard pass, 05 runs after 06 so the observed means cover
+    # the split equations too
+    stage("OECD 05 mean days", "05_mean_days.R")
+
+    stage("OECD 07 split regressions", "07_run_split_regressions_h2o.R")
+
+    Sys.unsetenv("INCORE_OECD")
   }
 
   # ---- summary --------------------------------------------------------------
 
   hdr("PIPELINE COMPLETE")
-  stats_path <- file.path("results_split", "split_model_stats.csv")
-  if (file.exists(stats_path)) {
-    message("\nModel statistics:\n")
-    print(read.csv(stats_path, stringsAsFactors = FALSE), row.names = FALSE)
-    message("\nSanity check: RMSE should be near the standard deviation of los in ",
-            "your source data. A value far above it suggests contaminated inputs.")
+  for (stats_path in c(file.path("results_split", "split_model_stats.csv"),
+                       file.path("results_split_OECD", "split_model_stats.csv"))) {
+    if (file.exists(stats_path)) {
+      message("\nModel statistics (", stats_path, "):\n")
+      print(read.csv(stats_path, stringsAsFactors = FALSE), row.names = FALSE)
+    }
   }
+  message("\nSanity check: RMSE should be near the standard deviation of los in ",
+          "your source data. A value far above it suggests contaminated inputs.")
   message("\nStage timings:\n")
   print(timings, row.names = FALSE)
   message("\nTotal: ", round(as.numeric(difftime(Sys.time(), started, units = "hours")), 2),
-          " hours.  Outputs in results/ and results_split/.")
+          " hours.  Outputs in results/ and results_split/",
+          if (oecd_sensitivity) " (and their _OECD counterparts)" else "", ".")
   invisible(timings)
 }
 
 # Full run on a new source dataset: every stage, both the split models and the
-# original four equations, in one execution. Point filepath in
-# src/01_transform_data.R at your data first.
-run_pipeline(new_source_data = TRUE, run_main_pipeline = TRUE)
+# original four equations, plus the overnight (OECD, los >= 2) pass, in one
+# execution. Point filepath in src/01_transform_data.R at your data first.
+# To re-run ONLY the overnight pass later, call
+# run_pipeline(run_main_pipeline = TRUE, oecd_only = TRUE) instead.
+run_pipeline(new_source_data = TRUE, run_main_pipeline = TRUE, oecd_sensitivity = TRUE)

@@ -71,7 +71,12 @@ sex_col_map <- list('0'='M', '1'='F')
 
 
 # Length of stay can be provided as a standalone column or can be extracted from
-# both a discharge date column and an admission date column.
+# both a discharge date column and an admission date column. INCORE counts
+# bed-days as calendar days spanned: a same-day separation = 1, a stay spanning
+# two consecutive calendar days = 2 -- i.e. (discharge - admission) + 1. A
+# standalone column must already follow this convention; if your source
+# variable counts nights (same-day = 0), supply the date columns instead and
+# the code computes it for you.
 los_col <- "los"
 
 # Survey/sampling weight. Admission-level. Leave NULL for an
@@ -186,6 +191,11 @@ message("LOS filter: removed ", format(n_before - nrow(df), big.mark = ","),
 # Create column for weight (defaults to 1 if no weight column provided)
 if (!is.null(weight_col)) {
   df <- df %>% mutate(weight = as.numeric(.data[[weight_col]]))
+  n_bad <- sum(is.na(df$weight) | df$weight <= 0)
+  if (n_bad > 0) {
+    stop(format(n_bad, big.mark = ","), " admissions have a missing or non-positive '",
+         weight_col, "' value -- weights must be positive numbers.")
+  }
 } else {
   df <- df %>% mutate(weight = 1)
 }
@@ -246,8 +256,22 @@ for (i in seq_along(out_files)) {
   # (this makes re-running 01 after the update cheap: the mapping cache is
   # reused and the children are dropped here). On a fresh mapping it removes
   # nothing.
-  readRDS(out_files[i]) %>%
-    filter(age >= 18) %>%
+  d <- readRDS(out_files[i]) %>%
+    filter(age >= 18, !is.na(los))
+  # A cache mapped before the weights update has no weight column. With
+  # weight_col unset that is simply an unweighted country (weight = 1); with
+  # weight_col SET the cached years are missing the weights, so stop rather
+  # than silently write an unweighted dataset.
+  if (!"weight" %in% names(d)) {
+    if (!is.null(weight_col)) {
+      stop("Cached year ", years[i], " in processed_by_year/ predates the weights ",
+           "update but weight_col is set. Delete processed_by_year/ (or run ",
+           "run_all.R with new_source_data = TRUE) so the weights are mapped in.")
+    }
+    message("Cached year ", years[i], " has no weight column: continuing unweighted (weight = 1).")
+    d <- d %>% mutate(weight = 1)
+  }
+  d %>%
     select(bene_id, admission_id, year_id, sex_id, age_start, icd_ver, icd_level, icd_code, condition, los, weight) %>%
     group_by(year_id, age_start, sex_id) %>%
     write_dataset(file.path(outdir,'transformed_data.parquet'),

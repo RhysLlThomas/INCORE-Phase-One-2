@@ -47,13 +47,24 @@ if (!h2o.clusterIsUp()) stop("h2o cluster did not start on port ", h2o_port, "."
 reg_level <- "admission"
 reg_names <- c("age_eq", "condition_eq", "family_age_eq", "family_pair_eq")
 
+# Overnight (OECD) sensitivity: when enabled, this stage runs the overnight-
+# only pipeline (admissions with at least one overnight stay, los >= 2) and
+# reads/writes _OECD-suffixed folders, leaving the main pipeline's folders
+# untouched. run_all.R enables it via the INCORE_OECD environment variable;
+# to run this stage on the overnight pipeline standalone, run
+# Sys.setenv(INCORE_OECD = "1") first (or set oecd_inpatient_only to TRUE).
+oecd_inpatient_only <- identical(Sys.getenv("INCORE_OECD"), "1")
+suffix <- if (oecd_inpatient_only) "_OECD" else ""
+if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions only; using the _OECD folders.")
+
 # Setting input folder
-indir <- file.path("data", "03_prepped_inputs")
+indir <- file.path("data", paste0("03_prepped_inputs", suffix))
 indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs/"
 
 # Creating output folder, if it doesn't already exist
-outdir <- file.path("results")
+outdir <- paste0("results", suffix)
 outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/results/"
+
 dir.create(outdir, recursive = TRUE)
 
 # Sex codes as they appear in the design-matrix filenames. 03_prep_inputs.R names
@@ -134,12 +145,19 @@ for (reg in reg_names) {
     # Setting predictors as all columns except "los"
     predictors <- setdiff(colnames(data), c("los", "weight"))
 
+    # Weights are optional: design matrices built before the weights update
+    # (or at the person_year level) have no weight column, and the fit is
+    # then unweighted. A weighted country must rebuild from 01_transform_data.R.
+    use_weights <- "weight" %in% colnames(data)
+    print(if (use_weights) "Weight column found: fitting weighted regressions." else
+          "No weight column: fitting UNWEIGHTED regressions (rebuild from 01_transform_data.R if you set weight_col).")
+
     # Running LASSO regression, using lambda search
     print("Running regression...")
     fit_LASSO <- h2o.glm(
       x = predictors,
       y = "los",
-      weights_column = "weight",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       alpha = 1,
@@ -211,7 +229,7 @@ for (reg in reg_names) {
     fit_GLM <- h2o.glm(
       x = selected_predictors,
       y = "los",
-      weights_column = "weight",
+      weights_column = if (use_weights) "weight" else NULL,
       training_frame = data,
       family = "gaussian",
       lambda = 0,
