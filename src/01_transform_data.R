@@ -99,21 +99,27 @@ icd_cols <- c("^dx_\\d+$")
 icd_condition_map <- read_feather(file.path("maps", "icd_map.feather"))
 
 # Creating output folder, if it doesn't already exist
+# --- local path override: INCORE run root on /mnt/share, by run date ---
+incore_root <- "/mnt/share/dex/us_county/05_requests/INCORE/09_28_2026/"
+
 #outdir <- file.path("data", "01_transformed_data")
-outdir <- file.path("/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/", "01_transformed_data")
+outdir <- file.path(incore_root, "01_transformed_data")
 dir.create(outdir, recursive = TRUE)
-out_dir  <- "/mnt/share/dex/us_county/05_requests/INCORE/processed_by_year"
+# Date-stamped along with the run root. The reuse guard below compares a cached
+# year against the SOURCE data mtime only, so a fix to the los code cannot
+# invalidate it -- a fresh root forces the years to be re-mapped.
+out_dir  <- file.path(incore_root, "processed_by_year")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
-if (dir.exists(file.path(outdir, 'transformed_data.parquet'))) {
-  message("Removing previous transformed_data.parquet before writing")
-  unlink(file.path(outdir, 'transformed_data.parquet'), recursive = TRUE, force = TRUE)
-}
+# if (dir.exists(file.path(outdir, 'transformed_data.parquet'))) {
+#   message("Removing previous transformed_data.parquet before writing")
+#   unlink(file.path(outdir, 'transformed_data.parquet'), recursive = TRUE, force = TRUE)
+# }
 
 # LOOP - NIS SPECIFIC
 #-----
 all_files <- list.dirs("/mnt/share/limited_use/LIMITED_USE/PROJECT_FOLDERS/USA/HCUP_NIS/dex/00_data_prep/stage_1/best/",recursive = FALSE, full.names = T)
-all_files <- all_files[grepl("201[4-9]", all_files)]
+all_files <- all_files[grepl("201[7]", all_files)]
 
 
 for(filepath in all_files){
@@ -178,6 +184,9 @@ df <- get_icd_version(df, icd_ver_col=icd_ver_col, icd_ver_col_map=icd_ver_col_m
 
 # Create column for los
 df <- get_length_of_stay(df, los_col=los_col, discharge_date_col=discharge_date_col, admission_date_col=admission_date_col)
+
+# important for USA, set los to los+1 since in hcup nis a same day stay is 0
+df <- df %>% mutate(los = los + 1)
 
 # INCORE inclusion: drop admissions with missing length of stay. LOS is the model
 # outcome; an NA los otherwise propagates to every stage and makes LASSO select

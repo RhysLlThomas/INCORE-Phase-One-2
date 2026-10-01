@@ -50,11 +50,13 @@ condition_families <- read_feather(file.path("maps", "condition_details.feather"
 # Setting input folder
 indir <- file.path("data", "01_transformed_data", "transformed_data.parquet")
 
-indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/01_transformed_data/transformed_data.parquet/"
+# --- local path override: INCORE run root on /mnt/share, by run date ---
+incore_root <- "/mnt/share/dex/us_county/05_requests/INCORE/09_28_2026"
+indir <- file.path(incore_root, "01_transformed_data", "transformed_data.parquet")
 
 # Creating output folder, if it doesn't already exist
 outdir <- file.path("data", paste0("02_cleaned_data", suffix))
-outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/02_cleaned_data/"
+outdir <- file.path(incore_root, paste0("02_cleaned_data", suffix))
 
 dir.create(outdir, recursive = TRUE)
 

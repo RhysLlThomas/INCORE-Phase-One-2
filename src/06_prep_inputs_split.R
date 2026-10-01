@@ -53,9 +53,13 @@ reg_names <- c("condition_split_eq", "family_age_split_eq")
 
 # Setting input and output folders
 indir <- file.path("data", paste0("02_cleaned_data", suffix), "cleaned_data.parquet")
-indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/02_cleaned_data//cleaned_data.parquet/"
+
+# --- local path override: INCORE run root on /mnt/share, by run date ---
+incore_root <- "/mnt/share/dex/us_county/05_requests/INCORE/09_28_2026"
+indir <- file.path(incore_root, paste0("02_cleaned_data", suffix), "cleaned_data.parquet")
+
 outdir <- file.path("data", paste0("03_prepped_inputs", suffix))
-outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs"
+outdir <- file.path(incore_root, paste0("03_prepped_inputs", suffix))
 
 # Loading dataset without reading fully into memory
 data <- open_dataset(indir)

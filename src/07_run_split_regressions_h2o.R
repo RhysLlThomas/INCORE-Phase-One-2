@@ -90,11 +90,14 @@ if (oecd_inpatient_only) message("OVERNIGHT (OECD) RUN: overnight admissions onl
 
 # Setting input and output folders
 indir  <- file.path("data", paste0("03_prepped_inputs", suffix))
-indir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/03_prepped_inputs/"
+
+# --- local path override: INCORE run root on /mnt/share, by run date ---
+incore_root <- "/mnt/share/dex/us_county/05_requests/INCORE/09_28_2026"
+indir <- file.path(incore_root, paste0("03_prepped_inputs", suffix))
 
 # Creating output folder, if it doesn't already exist
 outdir <- paste0("results_split", suffix)
-outdir <- "/mnt/share/dex/us_county/05_requests/INCORE/09_03_2026/results_split/"
+outdir <- file.path(incore_root, paste0("results_split", suffix))
 dir.create(outdir, recursive = TRUE)
 
 # The model-stats file is appended to per fit; start it fresh so rows from an
