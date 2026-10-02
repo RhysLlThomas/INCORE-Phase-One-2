@@ -160,3 +160,40 @@ write.csv(
 )
 
 print("Mean LOS by gender saved!")
+
+#------------------------------------------------
+##### ADMISSIONS BY LENGTH OF STAY AND SEX #####
+#------------------------------------------------
+# Number of admissions at each observed los value, one file per sex. Source is
+# the step-02 cleaned data for this pass (standard or _OECD). That data is long
+# on diagnosis; get_primary_condition() flags exactly one row per admission as
+# is_primary == 1, so filtering on it gives one row per admission without a
+# distinct(). The count runs inside arrow, only the needed columns are read, and
+# just the small summary table is collected. Admissions with missing los or sex
+# are excluded; sex_id = "-1" (a value not in sex_col_map) is treated as missing.
+
+cleaned_dir <- file.path("data", paste0("02_cleaned_data", suffix), "cleaned_data.parquet")
+cleaned     <- open_dataset(cleaned_dir)
+has_weight  <- "weight" %in% names(cleaned)
+
+los_counts <- cleaned %>%
+  filter(is_primary == 1, !is.na(los), !is.na(sex_id), sex_id != "-1") %>%
+  { if (has_weight) . else mutate(., weight = 1) } %>%
+  group_by(sex_id, los) %>%
+  summarise(n_admissions = n(),
+            weighted_n   = sum(weight, na.rm = TRUE)) %>%
+  collect() %>%
+  ungroup() %>%
+  arrange(sex_id, los)
+
+for (s in c("M", "F")) {
+  out <- los_counts %>% filter(sex_id == s) %>% select(-sex_id)
+  write.csv(
+    out,
+    file.path(outdir, paste0(reg_level, "_admissions_by_los_", s, ".csv")),
+    row.names = FALSE
+  )
+}
+
+print("Admissions by LOS and sex saved!")
+rm(cleaned, los_counts); gc()                              
